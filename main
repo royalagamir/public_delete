@@ -1,0 +1,194 @@
+LPARAMETERS loParams
+
+IF TYPE("m.loParams")#"O"
+**** Parametrai pagal nutylėjimą ****
+	loParams=CREATEOBJECT("custom")
+	loParams.ADDPROPERTY("nuo_datos",		DATE()-30)	&& Informacija, nuo kada skaityti pardavimų informaciją (pvz: už paskutines 5 d. arba 30 d.)
+	loParams.ADDPROPERTY("kliento_kodas",	'')			&& Kliento kodas, kai visi pardavimai registruojami vienam klientui
+	loParams.ADDPROPERTY("kliento_rysys",	'PT001')	&& Kliento sąskaitų ryšio kodas pagal nutylėjimą
+	loParams.ADDPROPERTY("kliento_mokesciai",'PVM')		&& Kliento mokesčio kodas pagal nutylėjimą
+	loParams.ADDPROPERTY("kliento_info"		,'')		&& Kliento papildoma informacija kuriant kliento kortelę. Pavyzdžiui: "<N08_KODAS_GS>WEB</N08_KODAS_GS>"
+	loParams.ADDPROPERTY("mokesciai"		,'')		&& Mokesčių parinkimo sąlygos: "<VALIUTA>[-<ŠALIS>]:<MOKESČIO KODAS>,...", pavyzdžiui: "USD:PVM_I,EUR:PVM,GBP:PVM_UK,EUR-LT:PVM_LT"
+	loParams.ADDPROPERTY("pristatymo_kodas"	,'PRISTATYMAS')	&& Pristatymo paslaugos kodas
+	loParams.ADDPROPERTY("pristatymo_tipas"	,2) 		&& Tipas: 1-prekė, 2-paslauga, 3-kodas
+	loParams.ADDPROPERTY("nuolaidos",		.F.)		&& Ar skaičiuoti nuolaidos sumą (kainos ir sumos bus imamos prieš nuolaidą)
+	loParams.ADDPROPERTY("nuolaidos_kodas",	'NUOLAIDA')	&& Nuolaidos paslaugos kodas
+	loParams.ADDPROPERTY("nuolaidos_tipas",	2) 			&& Tipas: 1-prekė, 2-paslauga, 3-kodas
+	loParams.ADDPROPERTY("apmokejimas",		'') 		&& Apmokėjimo sąlygos: "<MOKĖJIMO BŪDAS>[-<VALIUTA>]:<SĄSKAITA>,...", pavyzdžiui: "STRIPE:271,PAYPAL:273,PAYSERA:274,PAYSERA-USD:2711"
+	loParams.ADDPROPERTY("apmokejimo_tipas",'paid') 	&& Apmokėjimo tipas: "<tipas1>,...", pavyzdžiui: "paid,prepaid"
+	loParams.ADDPROPERTY("op_tip",			53)			&& 51 - Pardavimo važtaraštis, 53 - Pardavimo užsakymas
+	loParams.ADDPROPERTY("kaina_su_pvm",	.T.)		&& .T. - Kaina su PVM dokumente, .F. - Kaina be PVM dokumente
+	loParams.ADDPROPERTY("pvm_salis",		'')			&& Šalių kodai, kuriuose reikia išskirti PVM mokestį atskiru pardavimo kodu: "<ŠALIS>,...". Pavyzdžiui "CA,FR"
+	loParams.ADDPROPERTY("pvm_salis_kodai",	'')			&& Mokesčiai kuriuos reiktų išskirti. Pavyzdžiui Kanadoje taikomi GST ir PST, tuomet nurodoma: "<MOKESČIO PAVADINIMAS>[-<ŠALIS>]:<PARDAVIMO KODAS>,...", pvz.: "GST:CA_PVM5,PST-CA:CA_PVM7"
+	loParams.ADDPROPERTY("isaf_pozymis",	0)			&& Dokumentų registre: 0 - Formuoti, 1 - (+)Sąskaita, ...
+	loParams.ADDPROPERTY("suma_su_pvm",		.F.)		&& .T. - PVM suskaičiuojama Rivilės sistemoje, arba .F. - sumos ir PVM imamos taip kaip pateikta el. parduotuvėje
+	loParams.ADDPROPERTY("suminis",			.F.)		&& .T. Suminis dokumentas, neimportuojama detaliomis eilutėmis, arba .F. - importuojamos detalios eilutės
+	loParams.ADDPROPERTY("suminis_kodas",	'PARDAVIMAS') && Suminio dokumento pardavimo kodas
+	loParams.ADDPROPERTY("suminis_matas",	'VNT')		&& Mato vienetas
+	loParams.ADDPROPERTY("suminis_tipas",	3)			&& Tipas: 1-prekė, 2-paslauga, 3-kodas
+	loParams.ADDPROPERTY("preke_kliento",	'SHOPIFY')	&& Kliento kodas, naudojamas kliento prekių aprašymuose prie prekių kortelės
+	loParams.ADDPROPERTY("api_url",			'/admin/api/2022-07/') && API versijos nuoroda && Testuota /admin/api/2021-01/
+	loParams.ADDPROPERTY("api_filtravimas",	'status=any&'+'financial_status=any') && Filtravimo sąlygos, kaip atrenkami dokumentai iš el. parduotuvės. status=closed&financial_status=paid. Dokumentacija https://shopify.dev/docs/admin-api/rest/reference/orders/order
+	loParams.ADDPROPERTY("api_puslapio_limit",	100)	&& Gražinamo iš el. parduotuvės dokumentų kiekis vienoje užklausoje (max 100)
+	loParams.ADDPROPERTY("param_riv"		,'SHOPIFY_RIV ') && Parametro kodas kuriame bus saugomi prisijungimo prie Rivile API raktas
+	loParams.ADDPROPERTY("param_site"		,'SHOPIFY_SITE') && Parametro kodas kuriame bus saugomas el. parduotuvės adresas
+	loParams.ADDPROPERTY("param_user"		,'SHOPIFY_USER') && Parametro kodas kuriame bus saugomi prisijungimo prie el. parduotuvės vartotojas ir slaptažodis
+	loParams.ADDPROPERTY("file"				,.F.)	 	&& jei nurodytas failas - importuojama iš failo. Galima nurodyti: imp.file=GETFILE("JSON")
+	loParams.ADDPROPERTY("debug"			,.F.)		&& jei .T. - išsaugomi originalūs json failai tmp kataloge
+	loParams.ADDPROPERTY("i06_dok_nr",		'')			&& Dokumento numerio laukas (užsakymo nr: 'order_number'). Nenurodžius - priskiriamas iš skaitliuko.
+	loParams.ADDPROPERTY("field_dok_data"	,"created_at")	&& Dokumento data. Gali būti: 'created_at', 'closed_at', 'processed_at', 'fulfillments[1].created_at', 'fulfillments[1].updated_at' ar pan.
+	loParams.ADDPROPERTY("field_sku"		,"sku")		&& Nurodomas laukas iš kurio imamas prekės/paslaugos SKU kodas
+	loParams.ADDPROPERTY("field_barcode"	,"barcode")	&& Nurodomas laukas iš kurio imamas prekės/paslaugos barkodas
+	loParams.ADDPROPERTY("dok_nr_mask" 		,"")		&& Nurodoma, kokią seriją pridėti prie invoice_number, nurodomas šablonas, pavyzdžiui: INV-99999
+	loParams.ADDPROPERTY("id_prefix"		,"")	 	&& Importuojant iš keletos parduotuvių, kiekviena privalo turėti savo id prefiksą, kuris užtikrina dokumentų unikalumą. Pavyzdžiui 'A','B','1' ar pan.
+	loParams.ADDPROPERTY("dok_prefix"		,"")	 	&& Dokumento numerio prefiksas
+	loParams.ADDPROPERTY("refund"			,.T.)		&& Pašalinti grąžintą kiekį / eilutes
+
+** Užprogramuojamas klavišas pardavimų sąraše. Pavyzdžiui:
+* imp=imp_shopify_api() && Sukuriamas parametrų objektas
+* imp.nuo_datos=MAX({^2020.09.20},date()-7) && Nurodoma pradžios data, nuo kurios dienos startuojamas servisas
+* imp.suma_su_pvm=.F.
+* imp.kliento_kodas="PIRKEJAS"
+* imp.apmokejimas="STRIPE:271,PAYPAL:273,PAYSERA:274,PAYSERA-USD:2711"
+* imp.Init() && Vykdomas importas
+
+
+
+
+** Logika
+* Klientas: Naudojamas default nurodytas klientas -> Parenkamas pagal trumpame pavadinime nurodytą ID -> Parenkamas pagal el. pašto adresą -> Kuriamas naujas
+* Prekė/paslauga/pardavimo kodas: barkodas -> Parenkamas pagal kliento prekė -> Parenkamas pagal prekės kodas + pagr. mat. vnt -> pardavimo kodas -> Klaida (neimportuojamas visas dokumentas)
+
+** Reikalavimai ir pastabos
+* Veikia tik nuo Rivile GAMA 115 versijos
+* Kuriant klientus turi būti aprašytas klientų dokumentų skaitliukas
+* Kad neimportuotų antrą kartą tų pačių klientų turi būti suvesti bent jau klientų el. pašto adresai kliento kortelėje
+* Kad neimportuotų antrą kartą tų pačių pardavimo dokumentų - "Dokumentų registro" lauke įrašomas užsakymo numeris
+* Startuojant pirmą kartą rekomenduojama nurodyti parametre datą nuo kurios dienos turi būti pradėti importuoti dokumentai ir už kokį intervalą jie turi būti imami. Pavyzdžiui už 31 dieną, pradedant nuo 2020.09.01: imp.nuo_datos=MAX({^2020.09.01},date()-30)
+* Ištrynus pardavimo dokumentą, jį programa importuos dar kartą
+* Ištrynus arba pakeitus pardavimo dokumente "Dokumentų registro" lauką, dokumentas importuosis dar kartą
+* Mokėjimo statusas bei mokėjimo budas išsaugomas importuoto pardavimo dokumento aprašymo lauke
+
+	=bind_command(PROGRAM()+[(this.parent)],loParams,[Init],.F.)
+
+	RETURN loParams
+ENDIF
+
+** Reikalingi parametrai parametrų sąraše:
+* SHOPIFY_RIV - Rivile API (web service) raktas
+* SHOPIFY_SITE - Shopify parduotuvės adresas
+* SHOPIFY_USER - Shopify prisijungimo duomenys
+** Sukuriame parametrus "Parametrų" sąraše
+IF !F_SEEK("N22",UPPER(m.loParams.param_site))
+	=new_prmh(UPPER(m.loParams.param_riv),"Rivile API (web service) raktas",0,1,"API raktas","**",1,"","",0)
+** Rivile API raktas
+
+	=new_prmh(UPPER(m.loParams.param_site),"Shopify parduotuvės adresas",0,1,"Nuoroda","",1,"","",0)
+* Pavyzdžiui:
+* https://parduotuve.myshopify.com
+
+	=new_prmh(UPPER(m.loParams.param_user),"Shopify prisijungimo duomenys",1,1,"API Key","",1,"Password","**",0)
+* Pavyzdžiui:
+* 1a8d7259b1558b32deb25e394be5e333
+* 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
+	IF USED("N22")
+		USE IN N22
+	ENDIF
+*RETURN .F.
+ENDIF
+IF USED("N22")
+	USE IN N22
+ENDIF
+
+
+ON ERROR
+
+LOCAL nl
+m.nl=CHR(13)+CHR(10)
+
+m.lcApmokejimo_tipas=""
+IF !EMPTY(loParams.apmokejimo_tipas)
+	m.lcApmokejimo_tipas=','+loParams.apmokejimo_tipas+','
+ENDIF
+
+m.pcPVM_salys=""
+IF !EMPTY(m.loParams.pvm_salis)
+	m.pcPVM_salys=','+m.loParams.pvm_salis+','
+	IF EMPTY(m.loParams.pvm_salis_kodai)
+		l_MESSAGEBOX("Parametre Nenurodyti atskirai taikomų mokesčių kodai",16,"Klaida")
+		RETURN .F.
+	ENDIF
+ENDIF
+
+m.loApmokejimas = CREATEOBJECT("Collection")
+IF !EMPTY(loParams.apmokejimas)
+	m.ln=GETWORDCOUNT(loParams.apmokejimas,',')
+	FOR m.i=1 TO m.ln
+		m.lcEil=GETWORDNUM(loParams.apmokejimas,m.i,',')
+		m.loApmokejimas.ADD(UPPER(GETWORDNUM(m.lcEil,2,':')),UPPER(GETWORDNUM(m.lcEil,1,':')))
+	ENDFOR
+ENDIF
+
+m.loMokesciai = CREATEOBJECT("Collection")
+IF !EMPTY(loParams.mokesciai)
+	m.ln=GETWORDCOUNT(loParams.mokesciai,',')
+	FOR m.i=1 TO m.ln
+		m.lcEil=GETWORDNUM(loParams.mokesciai,m.i,',')
+		m.loMokesciai.ADD(UPPER(GETWORDNUM(m.lcEil,2,':')),UPPER(GETWORDNUM(m.lcEil,1,':')))
+	ENDFOR
+ENDIF
+
+m.loMokesciaiSk = CREATEOBJECT("Collection")
+IF !EMPTY(loParams.pvm_salis_kodai)
+	m.ln=GETWORDCOUNT(loParams.pvm_salis_kodai,',')
+	FOR m.i=1 TO m.ln
+		m.lcEil=GETWORDNUM(loParams.pvm_salis_kodai,m.i,',')
+		m.loMokesciaiSk.ADD(UPPER(GETWORDNUM(m.lcEil,2,':')),UPPER(GETWORDNUM(m.lcEil,1,':')))
+	ENDFOR
+ENDIF
+
+IF TYPE("m.loParams.file")="C" AND (EMPTY(m.loParams.file) OR !FILE(m.loParams.file))
+	** Nerastas importuojamas failas
+	RETURN .F.
+ENDIF
+
+IF TYPE("m.loParams.nuo_datos")="T"
+	m.loParams.nuo_datos=TTOD(m.loParams.nuo_datos)
+ENDIF
+IF TYPE("m.loParams.nuo_datos")#"D"
+	m.loParams.nuo_datos=DATE()
+ENDIF
+
+m.loParams.kliento_rysys=UPPER(m.loParams.kliento_rysys)
+IF !EMPTY(m.loParams.kliento_rysys) AND !F_SEEK("N16",m.loParams.kliento_rysys)
+	l_MESSAGEBOX("Nerasta mokesčių lentelė "+m.loParams.kliento_rysys,16,"Klaida")
+	RETURN .F.
+ENDIF
+
+m.loParams.kliento_mokesciai=UPPER(m.loParams.kliento_mokesciai)
+IF !EMPTY(m.loParams.kliento_mokesciai) AND !F_SEEK("N12",m.loParams.kliento_mokesciai)
+	l_MESSAGEBOX("Nerastas mokesčių kodas "+m.loParams.kliento_mokesciai,16,"Klaida")
+	RETURN .F.
+ENDIF
+
+m.loParams.kliento_kodas=UPPER(m.loParams.kliento_kodas)
+IF !EMPTY(m.loParams.kliento_kodas) AND !F_SEEK("N08",m.loParams.kliento_kodas)
+	l_MESSAGEBOX("Nerastas kliento kodas "+m.loParams.kliento_kodas,16,"Klaida")
+	RETURN .F.
+ENDIF
+
+IF EMPTY(m.loParams.kliento_kodas)
+	IF EMPTY(m.loParams.kliento_rysys)
+		l_MESSAGEBOX("Nenurodytas kliento sąskaitų ryšio kodas",16,"Klaida")
+		RETURN .F.
+	ENDIF
+	IF EMPTY(m.loParams.kliento_mokesciai)
+		l_MESSAGEBOX("Nenurodytas kliento mokesčių lentelės kodas pagal nutylėjimą",16,"Klaida")
+		RETURN .F.
+	ENDIF
+ENDIF
+
+IF TYPE("m.loParams.id_prefix")#"C"
+	m.loParams.id_prefix=""
+ENDIF
+m.loParams.id_prefix=UPPER(m.loParams.id_prefix)
